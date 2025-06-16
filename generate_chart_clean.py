@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
 India Frequency Allocation Chart Generator
-Creates a visual frequency allocation chart with 7 frequency rows 
+Creates a visual frequency allocation chart with 7 frequency rows
 similar to the US spectrum chart
 """
 
+import matplotlib
+
+# Use Agg backend which works better in headless environments
+matplotlib.use("Agg")
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -251,13 +255,18 @@ class FrequencyChartGenerator:
         return random_color
 
     def create_chart(
-        self, output_file="indian_frequency_chart.png", dpi=300, width=24, height=14
+        self,
+        output_file="indian_frequency_chart.pdf",
+        dpi=1200,
+        width=24,
+        height=14,
+        quality=95,
     ):
         """Create the frequency allocation chart with US chart style"""
         print("Creating frequency chart with US spectrum chart style...")
 
         # US chart has landscape orientation with specific dimensions
-        fig = plt.figure(figsize=(width, height))
+        fig = plt.figure(figsize=(width, height), dpi=dpi)
         fig.patch.set_facecolor("white")
         # Create main layout - US chart has specific ratio of sidebar to chart
         # Adjusted width ratios to allow space for vertical band labels
@@ -369,16 +378,57 @@ class FrequencyChartGenerator:
         # Tight layout with minimal margins - US chart style
         plt.tight_layout(rect=[0, 0, 1, 1])
 
-        # Minimal padding in the saved file
-        plt.savefig(
-            output_file,
-            dpi=dpi,
-            bbox_inches="tight",
-            pad_inches=0.1,
-            facecolor="white",
-            edgecolor="black",
-        )
-        print(f"Chart saved as {output_file}")
+        # Determine file format and save accordingly
+        file_ext = output_file.lower().split(".")[-1]
+
+        # Set format-specific options
+        save_kwargs = {
+            "bbox_inches": "tight",
+            "pad_inches": 0.1,
+            "facecolor": "white",
+            "edgecolor": "black",
+        }
+
+        # Add format-specific options for optimal quality
+        if file_ext in ["png", "jpg", "jpeg"]:
+            save_kwargs["dpi"] = dpi
+            save_kwargs["metadata"] = {
+                "Software": "FreqBand Chart Generator - High Quality"
+            }
+
+        if file_ext in ["jpg", "jpeg"]:
+            save_kwargs["quality"] = quality
+            save_kwargs["optimize"] = True
+
+        # For vector formats (PDF, SVG), ensure high quality
+        if file_ext in ["pdf", "svg"]:
+            save_kwargs["dpi"] = 1200  # Higher internal resolution for vector formats
+
+        # Save the file
+        plt.savefig(output_file, **save_kwargs)
+
+        print(f"Chart saved as {output_file} ({file_ext.upper()} format)")
+        # Generate helpful message based on format with WhatsApp sharing tips
+        if file_ext == "png":
+            print(f"Note: PNG format saved at {dpi} DPI.")
+            print("WhatsApp Sharing Tips:")
+            print("1. Send as a document/file rather than an image to preserve quality")
+            print("2. For better quality when zooming, try PDF or SVG formats")
+            print("3. Use the --whatsapp flag to generate both formats")
+        elif file_ext in ["jpg", "jpeg"]:
+            print(f"Note: JPEG format saved at {dpi} DPI with quality {quality}.")
+            print(
+                "Not recommended for WhatsApp sharing as JPEG compression will reduce quality."
+            )
+            print("Use PDF or SVG formats instead for better quality when zooming.")
+        elif file_ext in ["pdf", "svg"]:
+            print(
+                f"Note: {file_ext.upper()} vector format saved. This format preserves quality at any zoom level."
+            )
+            print("WhatsApp Sharing Tips:")
+            print("1. PDF/SVG formats maintain perfect quality at any zoom level")
+            print("2. When sharing on WhatsApp, send as a document/file")
+            print("3. Recipients can zoom in without any quality loss")
 
     def is_rectangle_overlapping(self, rect1, rect2):
         """Check if two rectangles overlap"""
@@ -1274,12 +1324,17 @@ class FrequencyChartGenerator:
         return service
 
     def generate_chart(
-        self, output_file="indian_frequency_chart.png", dpi=300, width=24, height=12
+        self,
+        output_file="indian_frequency_chart.png",
+        dpi=300,
+        width=24,
+        height=12,
+        quality=95,
     ):
         """Main method to generate the complete chart"""
         self.load_data()
         self.process_bands()
-        self.create_chart(output_file, dpi, width, height)
+        self.create_chart(output_file, dpi, width, height, quality)
 
     def calculate_allocation_layout(
         self, allocations, band_start_freq, total_freq_span
@@ -1809,14 +1864,14 @@ def main():
     parser.add_argument(
         "-o",
         "--output",
-        default="output.png",
-        help="Output image file (default: output.png)",
+        default="output.pdf",
+        help="Output file (default: output.pdf). Supported formats: .png, .pdf, .svg, .jpg",
     )
     parser.add_argument(
         "--dpi",
         type=int,
-        default=600,
-        help="Output image resolution (default: 600 DPI)",
+        default=1200,
+        help="Output image resolution for raster formats (default: 1200 DPI)",
     )
     parser.add_argument(
         "--width",
@@ -1830,14 +1885,66 @@ def main():
         default=16,
         help="Chart height in inches (default: 16, optimized for 7 frequency rows)",
     )
+    parser.add_argument(
+        "--quality",
+        type=int,
+        default=95,
+        help="JPEG quality (1-100) when saving as .jpg (default: 95)",
+    )
+    parser.add_argument(
+        "--whatsapp",
+        action="store_true",
+        help="Optimize for WhatsApp sharing (creates both PDF and high-res PNG)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["png", "pdf", "svg", "jpg"],
+        help="Force output format regardless of file extension",
+    )
 
     args = parser.parse_args()
 
     try:
         print(f"Generating US-style spectrum chart from {args.csv_file}...")
         generator = FrequencyChartGenerator(args.csv_file)
-        generator.generate_chart(args.output, args.dpi, args.width, args.height)
-        print(f"Successfully generated US-style chart: {args.output}")
+
+        # Handle WhatsApp optimization option
+        if args.whatsapp:
+            # Generate PDF for quality sharing
+
+            pdf_output = args.output.rsplit(".", 1)[0] + ".pdf"
+            generator.generate_chart(
+                pdf_output, args.dpi, args.width, args.height, args.quality
+            )
+            print(f"Generated PDF for quality sharing: {pdf_output}")
+
+            # Generate high-res PNG for immediate viewing
+            png_output = args.output.rsplit(".", 1)[0] + ".png"
+            generator.generate_chart(
+                png_output, args.dpi, args.width, args.height, args.quality
+            )
+            print(f"Generated high-res PNG: {png_output}")
+
+            print("\nWhatsApp Sharing Tips:")
+            print(
+                "1. Share the PDF version for best quality when recipients need to zoom"
+            )
+            print(
+                "2. PDF format preserves all details and text clarity at any zoom level"
+            )
+            print(
+                "3. When sharing PNG, send as a document/file instead of an image to preserve quality"
+            )
+        else:
+            # Override format if specified
+            output_file = args.output
+            if args.format:
+                output_file = args.output.rsplit(".", 1)[0] + "." + args.format
+
+            generator.generate_chart(
+                output_file, args.dpi, args.width, args.height, args.quality
+            )
+            print(f"Successfully generated US-style chart: {output_file}")
 
     except FileNotFoundError:
         print(f"Error: Could not find file {args.csv_file}")
